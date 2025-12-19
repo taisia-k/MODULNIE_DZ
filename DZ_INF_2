@@ -1,0 +1,113 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include <iostream>
+#include <vector>
+#include <ctime>
+#include <sstream>
+#include <iomanip>
+#include <openssl/sha.h>
+
+using namespace std;
+
+string sha256s(const string& s) {
+    unsigned char h[SHA256_DIGEST_LENGTH];
+    SHA256((const unsigned char*)s.c_str(), s.size(), h);
+
+    ostringstream o;
+    for (int i = 0; i < SHA256_DIGEST_LENGTH; i++)
+        o << hex << setw(2) << setfill('0') << (int)h[i];
+    return o.str();
+}
+
+struct Block {
+    int idx;
+    time_t ts;
+    string data;
+    string prev;
+    long long nonce;
+    string hash;
+
+    Block(int i, const string& d, const string& p) : idx(i), data(d), prev(p), nonce(0) {
+        ts = time(nullptr);
+        hash = calc();
+    }
+
+    string calc() const {
+        stringstream ss;
+        ss << idx << ts << data << prev << nonce;
+        return sha256s(ss.str());
+    }
+
+    void mine(int diff) {
+        string tgt(diff, '0');
+        cout << "майнинг...\n";
+        while (hash.substr(0, diff) != tgt) {
+            nonce++;
+            hash = calc();
+        }
+        cout << "готово. hash: " << hash << "\n";
+    }
+};
+
+struct Chain {
+    vector<Block> a;
+    int diff;
+
+    Chain(int d = 4) : diff(d) {
+        a.emplace_back(0, "genesis", "0");
+    }
+
+    void add(const string& data) {
+        Block b((int)a.size(), data, a.back().hash);
+        b.mine(diff);
+        a.push_back(b);
+    }
+
+    bool ok() const {
+        for (size_t i = 1; i < a.size(); i++) {
+            if (a[i].hash != a[i].calc()) return false;
+            if (a[i].prev != a[i - 1].hash) return false;
+        }
+        return true;
+    }
+
+    void print() const {
+        for (auto& b : a) {
+            cout << "\n";
+            cout << "block " << b.idx << "\n";
+            cout << "time: " << ctime(&b.ts);
+            cout << "data: " << b.data << "\n";
+            cout << "prev: " << b.prev << "\n";
+            cout << "hash: " << b.hash << "\n";
+            cout << "nonce: " << b.nonce << "\n";
+        }
+        cout << "\n";
+    }
+};
+
+int main() {
+    setlocale(LC_ALL, "rus");
+    Chain bc(4);
+    int cmd;
+
+    while (true) {
+        cout << "\n1 добавить\n2 проверить\n3 вывести\n4 выйти\n> ";
+        cin >> cmd;
+        cin.ignore();
+
+        if (cmd == 1) {
+            string data;
+            cout << "данные: ";
+            getline(cin, data);
+            bc.add(data);
+        }
+        else if (cmd == 2) {
+            cout << (bc.ok() ? "цепочка ок \n" : "цепочка сломана \n");
+        }
+        else if (cmd == 3) {
+            bc.print();
+        }
+        else if (cmd == 4) {
+            break;
+        }
+    }
+}
